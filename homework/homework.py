@@ -4,6 +4,11 @@ Escriba el codigo que ejecute la accion solicitada.
 
 # pylint: disable=import-outside-toplevel
 
+# Importar las librerías
+import os
+import zipfile
+import pandas as pd
+from io import TextIOWrapper
 
 def clean_campaign_data():
     """
@@ -49,8 +54,67 @@ def clean_campaign_data():
 
 
     """
+    # Rutas
+    input_dir = 'files/input'
+    output_dir = 'files/output'
+    os.makedirs(output_dir, exist_ok=True)
 
-    return
+    # Listas para insertar los datos
+    client_rows = []
+    campaing_rows = []
+    economic_rows = []
+
+    month_map = {
+        'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+        'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+        'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+    }
+
+
+
+    for file in os.listdir(input_dir):
+        if file.endswith('.zip'):
+            with zipfile.ZipFile(os.path.join(input_dir, file)) as archive:
+                for csv_file in archive.namelist():
+                    with archive.open(csv_file) as f:
+                        df = pd.read_csv(f, encoding='utf-8')
+
+                        # Client
+                        client = df[['client_id', 'age', 'job', 'marital', 'education', 'credit_default', 'mortgage']].copy()
+                        client['job'] = client['job'].str.replace('.', '', regex=False).str.replace('-', '_', regex=False)
+                        client['education'] = client['education'].str.replace('.', '_', regex=False)
+                        client['education'] = client['education'].replace('unknown', pd.NA)
+                        client['credit_default'] = (client['credit_default'] == 'yes').astype(int)
+                        client['mortgage'] = (client['mortgage'] == 'yes').astype(int)
+                        client_rows.append(client)
+
+                        #Campaign
+                        campaign = df[['client_id', 'number_contacts', 'contact_duration', 'previous_campaign_contacts',
+                                       'previous_outcome', 'campaign_outcome', 'day', 'month']].copy()
+                        campaign['previous_outcome'] = (campaign['previous_outcome'] == 'success').astype(int)
+                        campaign['campaign_outcome'] = (campaign['campaign_outcome'] == 'yes').astype(int)
+                        campaign['last_contact_date'] = (
+                            '2022-' +
+                            campaign['month'].str.lower().map(month_map) + '-' +
+                            campaign['day'].astype(str).str.zfill(2)
+                        )
+                        campaign = campaign[['client_id', 'number_contacts', 'contact_duration',
+                                             'previous_campaign_contacts', 'previous_outcome',
+                                             'campaign_outcome', 'last_contact_date']]
+                        campaing_rows.append(campaign)
+
+                        # ECONOMICS
+                        economics = df[['client_id', 'cons_price_idx', 'euribor_three_months']].copy()
+                        economic_rows.append(economics)
+
+    return (
+            pd.concat(client_rows).drop_duplicates().to_csv(os.path.join(output_dir, 'client.csv'), index=False),
+            pd.concat(campaing_rows).drop_duplicates().to_csv(os.path.join(output_dir, 'campaign.csv'), index=False),
+            pd.concat(economic_rows).drop_duplicates().to_csv(os.path.join(output_dir, 'economics.csv'), index=False)
+    )
+
+
+
 
 
 if __name__ == "__main__":
